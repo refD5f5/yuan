@@ -2,14 +2,14 @@ class Happy extends ComicSource {
     // 漫画源基本信息
     name = "嗨皮漫画"
     key = "happy"
-    version = "1.0.0"
+    version = "1.0.4"
     minAppVersion = "1.6.0"
     url = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/happy.js"
 
     // 基础URL
     baseUrl = "https://m.happymh.com"
 
-    // 分类参数映射
+    // 分类参数映射 - 移除重复「其它」
     categoryParamMap = {
         "全部": "",
         "热血": "rexue",
@@ -26,7 +26,7 @@ class Happy extends ComicSource {
         "励志": "lizhi",
         "职场": "zhichang",
         "美食": "meishi",
-        "社会": "shehui",
+        "社会":,
         "黑道": "heidao",
         "战争": "zhanzheng",
         "历史": "lishi",
@@ -38,6 +38,7 @@ class Happy extends ComicSource {
         "生活": "shenghuo",
         "伪娘": "weiniang",
         "治愈": "zhiyu",
+        "致郁": "zhiyu2",
         "神鬼": "shengui",
         "四格": "sige",
         "百合": "baihe",
@@ -106,7 +107,6 @@ class Happy extends ComicSource {
         "机甲": "jijia",
         "高甜": "gaotian",
         "僵尸": "jiangshi",
-        "致郁": "zhiyu",
         "电竞": "dianjing",
         "神魔": "shenmo",
         "异能": "yineng",
@@ -128,7 +128,6 @@ class Happy extends ComicSource {
         "欧皇": "ouhuang",
         "生存": "shengcun",
         "异世界": "yishijie",
-        "其它": "qita",
         "C99": "C99",
         "节操": "jiecao",
         "AA": "AA",
@@ -174,8 +173,24 @@ class Happy extends ComicSource {
         "16": `${this.baseUrl}/next/bookcase/dist/cea88102f3bc609f9910851ff15a5105.png`
     }
 
+    // 统一请求头
+    getCommonHeaders() {
+        return {
+            "Referer": `${this.baseUrl}/`,
+            "User-Agent": "Mozilla/5.0 (Linux; Android 12) Mobile",
+            "X-Requested-With": "XMLHttpRequest",
+            "Sec-Fetch-Mode": "cors"
+        }
+    }
+
+    // 时间戳
+    getTs() {
+        return Date.now()
+    }
+
     // 格式化作者信息
     formatAuthor = (authorRaw) => {
+        if (!authorRaw) return []
         const authorStr = authorRaw?.replace(/[+/?·]/g, ",").replace(/,（/g, "(").replace(/：|:,/g, ":").replace(/（/g, "(").replace(/）/g, ")")
         const authors = authorStr?.split(",").map(a => a.trim()).filter(a => a)
         return authors
@@ -183,24 +198,23 @@ class Happy extends ComicSource {
 
     // 格式化更新时间
     formatUpdateTime = (timeRaw) => {
-        // 如果是 MM-DD 格式，添加当前年份
+        if (!timeRaw) return ""
         if (/^\d{2}-\d{2}$/.test(timeRaw)) {
             return `${new Date().getFullYear()}-${timeRaw}`
         }
-
         return timeRaw
     }
 
     // 从HTML元素解析漫画信息
     parseHtmlComic = (item) => {
-        const id = item.querySelector("a").attributes.href.split("/").pop()
-        const title = item.querySelector(".manga-title")?.text.trim()
-        const cover = item.querySelector("mip-img").attributes.src
-        const lastChapter = item.querySelector(".manga-chapter")?.text.replace("更新至：", "").trim()
-        const rank = item.querySelector(".rank-number-small")?.text.trim()
+        const id = item.querySelector("a")?.attributes.href?.split("/").pop() || ""
+        const title = item.querySelector(".manga-title")?.text.trim() || ""
+        const cover = item.querySelector("mip-img")?.attributes.src || ""
+        const lastChapter = item.querySelector(".manga-chapter")?.text.replace("更新至：", "").trim() || ""
+        const rank = item.querySelector(".rank-number-small")?.text.trim() || ""
         const categoryElems = item.querySelectorAll(".manga-category")
-        const tags = categoryElems[0]?.text.split(/[|、]/).map(a => a.trim()).filter(a => a)
-        const authorElem = categoryElems[1]?.text.trim()
+        const tags = categoryElems[0]?.text.split(/[|、]/).map(a => a.trim()).filter(a => a) || []
+        const authorElem = categoryElems[1]?.text.trim() || ""
         const author = this.formatAuthor(authorElem)?.join(" | ")
         const score = categoryElems.slice(2).map(a => a.text.trim()).filter(a => a).join(" | ")
 
@@ -217,63 +231,49 @@ class Happy extends ComicSource {
     // 从JSON数据解析漫画信息
     parseJsonComic = (item) => {
         const author = this.formatAuthor(item.author)?.join(" | ")
-
         return {
-            id: item.manga_code,
-            title: item.name,
+            id: item.manga_code || "",
+            title: item.name || "",
             subTitle: author,
-            cover: item.cover,
-            tags: item.genre_ids?.split("、").map(a => a.trim()).filter(a => a),
-            description: item.last_chapter || author
+            cover: item.cover || "",
+            tags: item.genre_ids?.split("、").map(a => a.trim()).filter(a => a) || [],
+            description: item.last_chapter || author || ""
         }
     }
 
     // 解析评论数据
     parseComment = (item) => {
-        let content = item.content
-
-        // 如果是回复评论，添加@用户标记
+        let content = item.content || ""
         if (item.reply_to_comment && item.reply_to_comment.user) {
-            content = `回复 <b><a>@${item.reply_to_comment.user.username}</a></b>：${content}`
+            content = `回复 <b>@${item.reply_to_comment.user.username}</b>：${content}`
         }
-
         return {
-            userName: item.user.username,
-            avatar: this.avatarMap[item.user.cover],
+            userName: item.user?.username || "匿名用户",
+            avatar: this.avatarMap[item.user?.cover] || "",
             content: content,
-            time: item.reply_to_comment ? item.create_time : `章节：${item.ch_name}\n${item.create_time}`,
-            replyCount: item.reply_to_comment ? null : item.sub_comments_count,
+            time: item.reply_to_comment ? item.create_time : `章节：${item.ch_name || ""}\n${item.create_time || ""}`,
+            replyCount: item.reply_to_comment ? null : item.sub_comments_count ?? 0,
             id: item.id
         }
     }
 
-    // 通用评论加载功能
+    // 通用评论加载
     loadCommentsCommon = async (comicId, epId, page, replyTo, from) => {
         if (replyTo) {
-            // 加载楼中楼评论列表
-            const api = `${this.baseUrl}/v2.0/apis/comment/subComments?root_id=${replyTo}&pn=${page}&ps=10`
-            const res = await Network.get(api)
-
-            if (res.status !== 200) {
-                throw `评论接口请求失败: ${res.status}`
-            }
-
+            const api = `${this.baseUrl}/v2.0/apis/comment/subComments?root_id=${replyTo}&pn=${page}&ps=10&_t=${this.getTs()}`
+            const res = await Network.get(api, this.getCommonHeaders())
+            if (res.status !== 200) throw `评论接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
             return {
                 comments: data.data.items.map(this.parseComment),
                 maxPage: data.data.is_end ? page : null
             }
         } else {
-            // 加载主楼评论列表
             const order = this.loadSetting("commentOrder")
             const ch_id = epId ? `&ch_id=${epId}` : ""
-            const api = `${this.baseUrl}/v2.0/apis/comment?code=${comicId}${ch_id}&pn=${page}&order=${order}&from=${from}`
-            const res = await Network.get(api)
-
-            if (res.status !== 200) {
-                throw `评论接口请求失败: ${res.status}`
-            }
-
+            const api = `${this.baseUrl}/v2.0/apis/comment?code=${comicId}${ch_id}&pn=${page}&order=${order}&from=${from}&_t=${this.getTs()}`
+            const res = await Network.get(api, this.getCommonHeaders())
+            if (res.status !== 200) throw `评论接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
             return {
                 comments: data.data.items.map(this.parseComment),
@@ -282,139 +282,116 @@ class Happy extends ComicSource {
         }
     }
 
-    // 带缓存的章节列表加载功能
+    // 章节缓存加载 + 严格TTL过期判断
     loadChaptersWithCache = async (comicId) => {
-        // 获取单页章节数据
+        const cacheTTL = this.loadSetting("cacheTTL")
         const fetchData = async (page) => {
-            const api = `${this.baseUrl}/v2.0/apis/manga/chapterByPage?code=${comicId}&page=${page}&lang=cn&order=asc`
-            const res = await Network.get(api)
-
-            if (res.status !== 200) {
-                throw `第${page}页章节接口请求失败: ${res.status}`
-            }
-
+            const api = `${this.baseUrl}/v2.0/apis/manga/chapterByPage?code=${comicId}&page=${page}&lang=cn&order=asc&_t=${this.getTs()}`
+            const res = await Network.get(api, this.getCommonHeaders())
+            if (res.status !== 200) throw `第${page}页章节接口请求失败: ${res.status}`
             return JSON.parse(res.body).data
         }
-
-        // 获取第一页数据，读取总章节数
         const firstData = await fetchData(1)
-        const total = firstData.total
-
-        // 尝试读取缓存
+        const total = firstData.total || 0
         const cacheKey = `chapters_${comicId}`
         const cacheData = this.loadData(cacheKey)
 
-        // 缓存有效，直接使用缓存
-        if (cacheData && cacheData.total === total) {
+        // 缓存过期判断：0=不缓存，永久=999年
+        const isCacheExpired = !cacheData 
+            || cacheTTL === 0 
+            || (cacheTTL !== 999 * 365 * 24 * 60 * 60 * 1000 && Date.now() - cacheData.time > cacheTTL)
+            || cacheData.total !== total
+
+        if (!isCacheExpired) {
             return cacheData.chapters
         }
 
-        // 计算总页数
-        const firstItems = firstData.items
-        const pageSize = firstItems.length
+        const firstItems = firstData.items || []
+        const pageSize = firstItems.length || 20
         const totalPage = Math.ceil(total / pageSize)
-
-        let cachePage = 1
         let chapters = {}
 
-        // 判断是否使用缓存进行增量更新
-        if (cacheData && cacheData.total > pageSize && cacheData.total < total) {
-            cachePage = Math.floor(cacheData.total / pageSize)
-            chapters = { ...cacheData.chapters }
-        } else {
-            for (const item of firstItems) {
-                chapters[item.id] = item.chapterName
-            }
+        firstItems.forEach(item => chapters[item.id] = item.chapterName)
+
+        if (totalPage > 1) {
+            const pages = Array.from({ length: totalPage - 1 }, (_, i) => i + 2)
+            const addData = await Promise.all(pages.map(fetchData))
+            addData.forEach(data => {
+                (data.items || []).forEach(item => chapters[item.id] = item.chapterName)
+            })
         }
 
-        const addPage = totalPage - cachePage
-        if (addPage > 0) {
-            // 并行拉取所有新增数据
-            const pages = Array.from({ length: addPage }, (_, i) => cachePage + i + 1)
-            const addData = await Promise.all(
-                pages.map(page => fetchData(page))
-            )
-
-            // 合并新增章节数据
-            for (const data of addData) {
-                for (const item of data.items) {
-                    chapters[item.id] = item.chapterName
-                }
-            }
-        }
-
-        // 更新缓存
         this.saveCache(cacheKey, {
             time: Date.now(),
-            total: Object.keys(chapters).length,
+            total: total,
             chapters: chapters
         })
-
         return chapters
     }
 
-    // 保存缓存数据，同时管理缓存键列表
+    // 保存缓存 + 记录key
     saveCache = (key, data) => {
         this.saveData(key, data)
         const keys = this.loadData("cache_keys") || []
-
         if (!keys.includes(key)) {
             keys.push(key)
             this.saveData("cache_keys", keys)
         }
     }
 
-    // 清理过期缓存
+    // 全局清理过期缓存（按设置的缓存时长）
     cleanCache = (cacheTTL) => {
         const allKeys = this.loadData("cache_keys") || []
         const validKeys = []
-
+        const now = Date.now()
         for (const key of allKeys) {
-            if (Date.now() - this.loadData(key).time < cacheTTL) {
-                validKeys.push(key)
-            } else {
+            const val = this.loadData(key)
+            if (!val) {
                 this.deleteData(key)
+                continue
+            }
+            // 永久缓存不过期
+            if (cacheTTL === 999 * 365 * 24 * 60 * 60 * 1000) {
+                validKeys.push(key)
+                continue
+            }
+            // 短期/周期缓存过期删除
+            if (cacheTTL === 0 || now - val.time > cacheTTL) {
+                this.deleteData(key)
+            } else {
+                validKeys.push(key)
             }
         }
-
         this.saveData("cache_keys", validKeys)
     }
 
-    // 初始化函数：启动时清理过期缓存
+    // 初始化自动清理过期缓存
     init() {
-        this.cleanCache(this.loadSetting("cacheTTL"))
+        const ttl = this.loadSetting("cacheTTL")
+        this.cleanCache(ttl)
     }
 
-    // 发现页配置
+    // 发现页
     explore = [{
         title: "嗨皮漫画",
         type: "singlePageWithMultiPart",
         load: async () => {
-            const res = await Network.get(this.baseUrl)
-
-            if (res.status !== 200) {
-                throw `主页请求失败: ${res.status}`
-            }
-
+            const res = await Network.get(this.baseUrl, this.getCommonHeaders())
+            if (res.status !== 200) throw `主页请求失败: ${res.status}`
             const doc = new HtmlDocument(res.body)
             const parts = doc.querySelectorAll(".manga-area")
             const result = {}
-
             for (const part of parts) {
-                const title = part.querySelector("h3").text.trim()
+                const title = part.querySelector("h3")?.text.trim()
                 const comics = part.querySelectorAll(".manga-cover").map(this.parseHtmlComic)
-
-                if (comics.length > 0) {
-                    result[title] = comics
-                }
+                if (comics.length > 0 && title) result[title] = comics
             }
-
             doc.dispose()
             return result
         }
     }]
 
-    // 分类页配置
+    // 分类
     category = {
         title: "嗨皮漫画",
         parts: [{
@@ -424,283 +401,152 @@ class Happy extends ComicSource {
             categoryParams: Object.values(this.categoryParamMap),
             itemType: "category"
         }],
-
-        // 启用排行榜
         enableRankingPage: true
     }
 
-    // 分类漫画加载功能配置
     categoryComics = {
-        // 加载分类漫画
         load: async (category, param, options, page) => {
-            const api = `${this.baseUrl}/apis/c/index?genre=${param}&area=${options[0]}&audience=${options[1]}&series_status=${options[2]}&pn=${page}`
-            const res = await Network.get(api, {
-                "Referer": `${this.baseUrl}/latest`
-            })
-
-            if (res.status !== 200) {
-                throw `分类接口请求失败: ${res.status}`
-            }
-
+            const api = `${this.baseUrl}/apis/c/index?genre=${param}&area=${options[0]}&audience=${options[1]}&series_status=${options[2]}&pn=${page}&_t=${this.getTs()}`
+            const res = await Network.get(api, this.getCommonHeaders())
+            if (res.status !== 200) throw `分类接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
             return {
                 comics: data.data.items.map(this.parseJsonComic),
                 maxPage: data.data.isEnd ? page : null
             }
         },
-
-        // 分类筛选选项
         optionList: [{
             label: "地区",
-            options: [
-                "-全部",
-                "china-内地",
-                "japan-日本",
-                "hongkong-港台",
-                "europe-欧美",
-                "korea-韩国",
-                "other-其他"
-            ]
-        }, {
+            options: ["-全部","china-内地","japan-日本","hongkong-港台","europe-欧美","korea-韩国","other-其他"]
+        },{
             label: "受众",
-            options: [
-                "-全部",
-                "shaonian-少年",
-                "shaonv-少女",
-                "qingnian-青年",
-                "BL-BL",
-                "GL-GL"
-            ]
-        }, {
+            options: ["-全部","shaonian-少年","shaonv-少女","qingnian-青年","BL-BL","GL-GL"]
+        },{
             label: "状态",
-            options: [
-                "-全部",
-                "0-连载中",
-                "1-完结"
-            ]
+            options: ["-全部","0-连载中","1-完结"]
         }],
-
-        // 排行榜页面配置
         ranking: {
-            // 排行榜选项
-            options: [
-                "day-日阅读",
-                "dayBookcasesOne-日收藏",
-                "week-周阅读",
-                "weekBookcase-周收藏",
-                "month-月阅读",
-                "monthBookcases-月收藏",
-                "voteRank-总评分",
-                "voteNumMonthRank-月投票"
-            ],
-
-            // 加载排行榜漫画
+            options: ["day-日阅读","dayBookcasesOne-日收藏","week-周阅读","weekBookcase-周收藏","month-月阅读","monthBookcases-月收藏","voteRank-总评分","voteNumMonthRank-月投票"],
             load: async (option, page) => {
-                const url = `${this.baseUrl}/rank/${option}`
-                const res = await Network.get(url)
-
-                if (res.status !== 200) {
-                    throw `排行榜页面请求失败: ${res.status}`
-                }
-
+                const url = `${this.baseUrl}/rank/${option}?pn=${page}`
+                const res = await Network.get(url, this.getCommonHeaders())
+                if (res.status !== 200) throw `排行榜请求失败: ${res.status}`
                 const doc = new HtmlDocument(res.body)
                 const comics = doc.querySelectorAll(".manga-rank").map(this.parseHtmlComic)
                 doc.dispose()
-
-                return {
-                    comics: comics,
-                    maxPage: 1
-                }
+                return { comics, maxPage: null }
             }
         }
     }
 
-    // 搜索功能配置
+    // 搜索修复分页
     search = {
-        // 加载搜索漫画
         load: async (keyword, options, page) => {
-            const api = `${this.baseUrl}/v2.0/apis/manga/ssearch`
-            const res = await Network.post(api, {
-                "Referer": `${this.baseUrl}/sssearch`,
-                "Content-Type": "application/x-www-form-urlencoded"
-            }, `searchkey=${encodeURIComponent(keyword)}&v=v2.13`)
-
-            if (res.status !== 200) {
-                throw `搜索接口请求失败: ${res.status}`
-            }
-
+            const api = `${this.baseUrl}/v2.0/apis/manga/ssearch?pn=${page}&_t=${this.getTs()}`
+            const res = await Network.post(api, this.getCommonHeaders(), `searchkey=${encodeURIComponent(keyword)}&v=v2.13`)
+            if (res.status !== 200) throw `搜索接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
             return {
                 comics: data.data.items.map(this.parseJsonComic),
-                maxPage: 1
+                maxPage: data.data.isEnd ? page : null
             }
         }
     }
 
-    // 漫画详情页配置
+    // 漫画详情 + 阅读接口
     comic = {
-        // 加载漫画详细信息
         loadInfo: async (id) => {
             const url = `${this.baseUrl}/manga/${id}`
-            const res = await Network.get(url)
-
-            if (res.status !== 200) {
-                throw `漫画详情页请求失败: ${res.status}`
-            }
-
+            const res = await Network.get(url, this.getCommonHeaders())
+            if (res.status !== 200) throw `漫画详情请求失败: ${res.status}`
             const doc = new HtmlDocument(res.body)
-
-            // 从HTML提取JSON数据
-            const jsonInHtml = res.body.match(/<mip-data>\s*<script type="application\/json">\s*([\s\S]*?)<\/script>\s*<\/mip-data>/i)?.[1]
+            const jsonInHtml = res.body.match(/<mip-data>\s*<script type="application\/json">\s*([\s\S]*?)<\/script>\s*<\/mip-data>/i)?.[1]?.trim() || "{}"
             const comicData = JSON.parse(jsonInHtml)
-
-            // 从HTML解析信息
-            const title = doc.querySelector(".mg-title")?.text.trim()
-            const subTitle = doc.querySelector(".mg-sub-title")?.text.replace(/,/g, "／").trim()
-            const cover = doc.querySelector("mip-img").attributes.src
+            const title = doc.querySelector(".mg-title")?.text.trim()||""
+            const subTitle = doc.querySelector(".mg-sub-title")?.text.replace(/,/g, "／").trim()||""
+            const cover = doc.querySelector("mip-img")?.attributes.src||""
             const authorRaw = doc.querySelectorAll(".mg-sub-title a").map(a => a.text.trim()).join(",")
             const authors = this.formatAuthor(authorRaw)
             const author = authors.join(" | ")
             const genres = doc.querySelectorAll(".mg-cate a").map(a => a.text.trim()).filter(a => a)
-            const descRaw = doc.querySelector("mip-showmore")?.text.trim()
+            const descRaw = doc.querySelector("mip-showmore")?.text.trim()||""
             const description = subTitle ? [descRaw, `别名：${subTitle}`].filter(a => a).join("\n\n") : descRaw
             const updateTimeRaw = doc.querySelector(".update-time .time")?.text.trim()
-            const updateTime = this.formatUpdateTime(updateTimeRaw)
+            const updateTime = this.formatUpdateTime(updateTimeRaw||"")
             const recommend = doc.querySelectorAll(".manga-cover").map(this.parseHtmlComic)
-
-            // 从内嵌JSON解析信息
             const stars = parseFloat(comicData.score) || null
             const status = comicData.serie_status ? "完结" : "连载中"
-
-            // 获取章节数据
             const chapters = await this.loadChaptersWithCache(id)
-
             doc.dispose()
 
             return new ComicDetails({
-                title: title,
-                subTitle: author,
-                cover: cover,
-                description: description,
-                tags: {
-                    "作者": authors,
-                    "题材": genres,
-                    "状态": [status]
-                },
-                chapters: chapters,
-                recommend: recommend,
-                updateTime: updateTime,
-                url: url,
-                stars: stars
+                title,subTitle:author,cover,description,
+                tags:{"作者":authors,"题材":genres,"状态":[status]},
+                chapters,recommend,updateTime,url,stars
             })
         },
 
-        // 加载章节图片
         loadEp: async (comicId, epId) => {
-            const api = `${this.baseUrl}/v2.0/apis/manga/reading?code=${comicId}&cid=${epId}&v=v3.1919111`
-            const res = await Network.get(api, {
-                "Referer": this.baseUrl,
-                "X-Requested-With": "XMLHttpRequest"
-            })
-
-            if (res.status !== 200) {
-                throw `章节图片接口请求失败: ${res.status}`
-            }
-
+            const ts = this.getTs()
+            const api = `${this.baseUrl}/v2.0/apis/manga/reading?code=${comicId}&cid=${epId}&v=v4.203411&_t=${ts}`
+            const res = await Network.get(api, this.getCommonHeaders())
+            if (res.status !== 200) throw `章节接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
-
-            // 去除末尾来自下一章的图片，并根据设置决定是否加载原图
             const original = this.loadSetting("originalImage")
-            const images = data.data.scans.filter(item => item.n === 0).map(item => original ? item.url.replace(/\?.*$/, "") : item.url)
-
-            if (images.length === 0) {
-                throw "本章未找到任何图片，请确认网页来源是否正常"
-            }
-
-            return {
-                images: images
-            }
+            const images = (data.data.scans || [])
+                .filter(item => item.n === 0)
+                .map(item => original ? item.url.replace(/\?.*$/,"") : item.url)
+            if(images.length===0) throw "本章无图片"
+            return { images }
         },
 
-        // 加载漫画评论
         loadComments: async (comicId, subId, page, replyTo) => {
             return await this.loadCommentsCommon(comicId, null, page, replyTo, "detail")
         },
-
-        // 加载章节评论
         loadChapterComments: async (comicId, epId, page, replyTo) => {
             return await this.loadCommentsCommon(comicId, epId, page, replyTo, "read")
         },
-
-        // 标签点击事件：作者跳转搜索，题材跳转分类
         onClickTag: (namespace, tag) => {
-            if (namespace === "作者") {
-                return {
-                    page: "search",
-                    attributes: {
-                        keyword: tag
-                    }
-                }
-            } else if (namespace === "题材") {
-                return {
-                    page: "category",
-                    attributes: {
-                        category: tag,
-                        param: this.categoryParamMap[tag]
-                    }
-                }
-            }
+            if (namespace === "作者") return {page:"search",attributes:{keyword:tag}}
+            if (namespace === "题材") return {page:"category",attributes:{category:tag,param:this.categoryParamMap[tag]}}
         },
-
-        // 禁用标签翻译
         enableTagsTranslate: false
     }
 
-    // 设置功能配置
+    // ========== 增强版：缓存有效时长设置 ==========
     settings = {
-        // 显示原图开关
-        originalImage: {
-            title: "阅读显示原图",
-            type: "switch",
-            default: false
-        },
-
-        // 评论排序选项
-        commentOrder: {
-            title: "评论排序方式",
-            type: "select",
-            options: [
-                { value: "hot", text: "最热" },
-                { value: "time", text: "最新" }
-            ],
-            default: "hot"
-        },
-
-        // 缓存有效时长选项
+        originalImage: {title:"阅读显示原图",type:"switch",default:false},
+        commentOrder: {title:"评论排序方式",type:"select",options:[
+            {value:"hot",text:"最热"},
+            {value:"time",text:"最新"}
+        ],default:"hot"},
         cacheTTL: {
             title: "缓存有效时长",
             type: "select",
-            options: [
-                { value: 0, text: "当次" },
-                { value: 604800000, text: "一周" },
-                { value: 2592000000, text: "一月" },
-                { value: 7776000000, text: "三月" },
-                { value: 15552000000, text: "半年" },
-                { value: 31104000000, text: "一年" }
+            options:[
+                {value: 0,                text: "不缓存（实时刷新）"},
+                {value: 3600000,     text: "1 小时"},
+                {value: 21600000,    text: "6 小时"},
+                {value: 43200000,    text: "12 小时"},
+                {value: 86400000,    text: "1 天"},
+                {value: 604800000,   text: "1 周"},
+                {value: 2592000000,  text: "1 月"},
+                {value: 7776000000,  text: "3 月"},
+                {value: 15552000000, text: "半年"},
+                {value: 31536000000, text: "1 年"},
+                {value: 525074400000,text: "永久缓存"}
             ],
             default: 2592000000
         },
-
-        // 清除缓存按钮
         wipeCache: {
-            title: "清除全部缓存",
-            type: "callback",
-            buttonText: "清除",
-            callback: () => {
+            title:"清除全部缓存",
+            type:"callback",
+            buttonText:"立即清除",
+            callback:()=>{
                 this.cleanCache(0)
                 this.deleteData("cache_keys")
-                UI.showMessage("已清除全部缓存")
+                UI.showMessage("✅ 已清空所有漫画章节/分类缓存")
             }
         }
     }
-}
+                                    }
