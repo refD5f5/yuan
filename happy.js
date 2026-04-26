@@ -9,7 +9,7 @@ class Happy extends ComicSource {
     // 基础URL
     baseUrl = "https://m.happymh.com"
 
-    // 分类参数映射 - 移除重复「其它」
+    // 分类参数映射
     categoryParamMap = {
         "全部": "",
         "热血": "rexue",
@@ -26,7 +26,7 @@ class Happy extends ComicSource {
         "励志": "lizhi",
         "职场": "zhichang",
         "美食": "meishi",
-        "社会":,
+        "社会": "shehui",
         "黑道": "heidao",
         "战争": "zhanzheng",
         "历史": "lishi",
@@ -177,9 +177,8 @@ class Happy extends ComicSource {
     getCommonHeaders() {
         return {
             "Referer": `${this.baseUrl}/`,
-            "User-Agent": "Mozilla/5.0 (Linux; Android 12) Mobile",
-            "X-Requested-With": "XMLHttpRequest",
-            "Sec-Fetch-Mode": "cors"
+            "User-Agent": "Mozilla/5.0 (Mobile) Android",
+            "X-Requested-With": "XMLHttpRequest"
         }
     }
 
@@ -190,7 +189,6 @@ class Happy extends ComicSource {
 
     // 格式化作者信息
     formatAuthor = (authorRaw) => {
-        if (!authorRaw) return []
         const authorStr = authorRaw?.replace(/[+/?·]/g, ",").replace(/,（/g, "(").replace(/：|:,/g, ":").replace(/（/g, "(").replace(/）/g, ")")
         const authors = authorStr?.split(",").map(a => a.trim()).filter(a => a)
         return authors
@@ -198,7 +196,6 @@ class Happy extends ComicSource {
 
     // 格式化更新时间
     formatUpdateTime = (timeRaw) => {
-        if (!timeRaw) return ""
         if (/^\d{2}-\d{2}$/.test(timeRaw)) {
             return `${new Date().getFullYear()}-${timeRaw}`
         }
@@ -207,14 +204,14 @@ class Happy extends ComicSource {
 
     // 从HTML元素解析漫画信息
     parseHtmlComic = (item) => {
-        const id = item.querySelector("a")?.attributes.href?.split("/").pop() || ""
-        const title = item.querySelector(".manga-title")?.text.trim() || ""
-        const cover = item.querySelector("mip-img")?.attributes.src || ""
-        const lastChapter = item.querySelector(".manga-chapter")?.text.replace("更新至：", "").trim() || ""
-        const rank = item.querySelector(".rank-number-small")?.text.trim() || ""
+        const id = item.querySelector("a").attributes.href.split("/").pop()
+        const title = item.querySelector(".manga-title")?.text.trim()
+        const cover = item.querySelector("mip-img").attributes.src
+        const lastChapter = item.querySelector(".manga-chapter")?.text.replace("更新至：", "").trim()
+        const rank = item.querySelector(".rank-number-small")?.text.trim()
         const categoryElems = item.querySelectorAll(".manga-category")
-        const tags = categoryElems[0]?.text.split(/[|、]/).map(a => a.trim()).filter(a => a) || []
-        const authorElem = categoryElems[1]?.text.trim() || ""
+        const tags = categoryElems[0]?.text.split(/[|、]/).map(a => a.trim()).filter(a => a)
+        const authorElem = categoryElems[1]?.text.trim()
         const author = this.formatAuthor(authorElem)?.join(" | ")
         const score = categoryElems.slice(2).map(a => a.text.trim()).filter(a => a).join(" | ")
 
@@ -232,27 +229,27 @@ class Happy extends ComicSource {
     parseJsonComic = (item) => {
         const author = this.formatAuthor(item.author)?.join(" | ")
         return {
-            id: item.manga_code || "",
-            title: item.name || "",
+            id: item.manga_code,
+            title: item.name,
             subTitle: author,
-            cover: item.cover || "",
-            tags: item.genre_ids?.split("、").map(a => a.trim()).filter(a => a) || [],
-            description: item.last_chapter || author || ""
+            cover: item.cover,
+            tags: item.genre_ids?.split("、").map(a => a.trim()).filter(a => a),
+            description: item.last_chapter || author
         }
     }
 
     // 解析评论数据
     parseComment = (item) => {
-        let content = item.content || ""
+        let content = item.content
         if (item.reply_to_comment && item.reply_to_comment.user) {
-            content = `回复 <b>@${item.reply_to_comment.user.username}</b>：${content}`
+            content = `回复 <b><a>@${item.reply_to_comment.user.username}</a></b>：${content}`
         }
         return {
-            userName: item.user?.username || "匿名用户",
-            avatar: this.avatarMap[item.user?.cover] || "",
+            userName: item.user.username,
+            avatar: this.avatarMap[item.user.cover],
             content: content,
-            time: item.reply_to_comment ? item.create_time : `章节：${item.ch_name || ""}\n${item.create_time || ""}`,
-            replyCount: item.reply_to_comment ? null : item.sub_comments_count ?? 0,
+            time: item.reply_to_comment ? item.create_time : `章节：${item.ch_name}\n${item.create_time}`,
+            replyCount: item.reply_to_comment ? null : item.sub_comments_count,
             id: item.id
         }
     }
@@ -282,9 +279,9 @@ class Happy extends ComicSource {
         }
     }
 
-    // 章节缓存加载 + 严格TTL过期判断
+    // 章节缓存加载
     loadChaptersWithCache = async (comicId) => {
-        const cacheTTL = this.loadSetting("cacheTTL")
+        const cacheTTL = this.loadSetting("cacheTTL");
         const fetchData = async (page) => {
             const api = `${this.baseUrl}/v2.0/apis/manga/chapterByPage?code=${comicId}&page=${page}&lang=cn&order=asc&_t=${this.getTs()}`
             const res = await Network.get(api, this.getCommonHeaders())
@@ -292,44 +289,48 @@ class Happy extends ComicSource {
             return JSON.parse(res.body).data
         }
         const firstData = await fetchData(1)
-        const total = firstData.total || 0
+        const total = firstData.total
         const cacheKey = `chapters_${comicId}`
         const cacheData = this.loadData(cacheKey)
 
-        // 缓存过期判断：0=不缓存，永久=999年
-        const isCacheExpired = !cacheData 
-            || cacheTTL === 0 
-            || (cacheTTL !== 999 * 365 * 24 * 60 * 60 * 1000 && Date.now() - cacheData.time > cacheTTL)
-            || cacheData.total !== total
+        // 缓存过期判断
+        let needRefresh = true;
+        if(cacheData){
+            const isExpire = (Date.now() - cacheData.time) > cacheTTL;
+            if(!isExpire && cacheData.total === total){
+                needRefresh = false;
+            }
+        }
 
-        if (!isCacheExpired) {
+        if (!needRefresh) {
             return cacheData.chapters
         }
 
-        const firstItems = firstData.items || []
+        const firstItems = firstData.items
         const pageSize = firstItems.length || 20
         const totalPage = Math.ceil(total / pageSize)
+        let cachePage = 1
         let chapters = {}
 
         firstItems.forEach(item => chapters[item.id] = item.chapterName)
 
-        if (totalPage > 1) {
-            const pages = Array.from({ length: totalPage - 1 }, (_, i) => i + 2)
+        const addPage = totalPage - cachePage
+        if (addPage > 0) {
+            const pages = Array.from({ length: addPage }, (_, i) => cachePage + i + 1)
             const addData = await Promise.all(pages.map(fetchData))
             addData.forEach(data => {
-                (data.items || []).forEach(item => chapters[item.id] = item.chapterName)
+                data.items.forEach(item => chapters[item.id] = item.chapterName)
             })
         }
 
         this.saveCache(cacheKey, {
             time: Date.now(),
-            total: total,
+            total: Object.keys(chapters).length,
             chapters: chapters
         })
         return chapters
     }
 
-    // 保存缓存 + 记录key
     saveCache = (key, data) => {
         this.saveData(key, data)
         const keys = this.loadData("cache_keys") || []
@@ -339,35 +340,23 @@ class Happy extends ComicSource {
         }
     }
 
-    // 全局清理过期缓存（按设置的缓存时长）
     cleanCache = (cacheTTL) => {
         const allKeys = this.loadData("cache_keys") || []
         const validKeys = []
-        const now = Date.now()
+        const now = Date.now();
         for (const key of allKeys) {
             const val = this.loadData(key)
-            if (!val) {
-                this.deleteData(key)
-                continue
-            }
-            // 永久缓存不过期
-            if (cacheTTL === 999 * 365 * 24 * 60 * 60 * 1000) {
+            if (val && (now - val.time) < cacheTTL) {
                 validKeys.push(key)
-                continue
-            }
-            // 短期/周期缓存过期删除
-            if (cacheTTL === 0 || now - val.time > cacheTTL) {
-                this.deleteData(key)
             } else {
-                validKeys.push(key)
+                this.deleteData(key)
             }
         }
         this.saveData("cache_keys", validKeys)
     }
 
-    // 初始化自动清理过期缓存
     init() {
-        const ttl = this.loadSetting("cacheTTL")
+        const ttl = this.loadSetting("cacheTTL");
         this.cleanCache(ttl)
     }
 
@@ -453,15 +442,15 @@ class Happy extends ComicSource {
         }
     }
 
-    // 漫画详情 + 阅读接口
+    // 漫画详情 + 阅读接口修复
     comic = {
         loadInfo: async (id) => {
             const url = `${this.baseUrl}/manga/${id}`
             const res = await Network.get(url, this.getCommonHeaders())
             if (res.status !== 200) throw `漫画详情请求失败: ${res.status}`
             const doc = new HtmlDocument(res.body)
-            const jsonInHtml = res.body.match(/<mip-data>\s*<script type="application\/json">\s*([\s\S]*?)<\/script>\s*<\/mip-data>/i)?.[1]?.trim() || "{}"
-            const comicData = JSON.parse(jsonInHtml)
+            const jsonInHtml = res.body.match(/<mip-data>\s*<script type="application\/json">\s*([\s\S]*?)<\/script>\s*<\/mip-data>/i)?.[1]
+            const comicData = JSON.parse(jsonInHtml||"{}")
             const title = doc.querySelector(".mg-title")?.text.trim()||""
             const subTitle = doc.querySelector(".mg-sub-title")?.text.replace(/,/g, "／").trim()||""
             const cover = doc.querySelector("mip-img")?.attributes.src||""
@@ -493,7 +482,7 @@ class Happy extends ComicSource {
             if (res.status !== 200) throw `章节接口请求失败: ${res.status}`
             const data = JSON.parse(res.body)
             const original = this.loadSetting("originalImage")
-            const images = (data.data.scans || [])
+            const images = data.data.scans
                 .filter(item => item.n === 0)
                 .map(item => original ? item.url.replace(/\?.*$/,"") : item.url)
             if(images.length===0) throw "本章无图片"
@@ -513,40 +502,48 @@ class Happy extends ComicSource {
         enableTagsTranslate: false
     }
 
-    // ========== 增强版：缓存有效时长设置 ==========
+    // 增强：完整缓存时长选项，无语法错误
     settings = {
-        originalImage: {title:"阅读显示原图",type:"switch",default:false},
-        commentOrder: {title:"评论排序方式",type:"select",options:[
-            {value:"hot",text:"最热"},
-            {value:"time",text:"最新"}
-        ],default:"hot"},
-        cacheTTL: {
-            title: "缓存有效时长",
-            type: "select",
+        originalImage: {
+            title:"阅读显示原图",
+            type:"switch",
+            default:false
+        },
+        commentOrder: {
+            title:"评论排序方式",
+            type:"select",
             options:[
-                {value: 0,                text: "不缓存（实时刷新）"},
-                {value: 3600000,     text: "1 小时"},
-                {value: 21600000,    text: "6 小时"},
-                {value: 43200000,    text: "12 小时"},
-                {value: 86400000,    text: "1 天"},
-                {value: 604800000,   text: "1 周"},
-                {value: 2592000000,  text: "1 月"},
-                {value: 7776000000,  text: "3 月"},
-                {value: 15552000000, text: "半年"},
-                {value: 31536000000, text: "1 年"},
-                {value: 525074400000,text: "永久缓存"}
+                {value:"hot",text:"最热"},
+                {value:"time",text:"最新"}
             ],
-            default: 2592000000
+            default:"hot"
+        },
+        cacheTTL: {
+            title:"缓存有效时长",
+            type:"select",
+            options:[
+                {value:0,text:"不缓存"},
+                {value:3600000,text:"1小时"},
+                {value:21600000,text:"6小时"},
+                {value:43200000,text:"12小时"},
+                {value:86400000,text:"1天"},
+                {value:604800000,text:"一周"},
+                {value:2592000000,text:"一月"},
+                {value:7776000000,text:"三月"},
+                {value:15552000000,text:"半年"},
+                {value:31104000000,text:"一年"}
+            ],
+            default:2592000000
         },
         wipeCache: {
             title:"清除全部缓存",
             type:"callback",
-            buttonText:"立即清除",
+            buttonText:"清除",
             callback:()=>{
                 this.cleanCache(0)
                 this.deleteData("cache_keys")
-                UI.showMessage("✅ 已清空所有漫画章节/分类缓存")
+                UI.showMessage("已清除全部缓存")
             }
         }
     }
-                                    }
+}
